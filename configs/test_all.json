@@ -1,0 +1,125 @@
+{
+    "steps": [
+        {
+            "name": "data_generator",
+            "type": "DataGenerator",
+            "inputs": [],
+            "outputs": [
+                "raw_data"
+            ],
+            "params": {
+                "limit": 80,
+                "batch_mode": true,
+                "batch_size": 4
+            }
+        },
+        {
+            "name": "normalize",
+            "type": "FeatureProcessor",
+            "inputs": [
+                "raw_data"
+            ],
+            "outputs": [
+                "normalized_data"
+            ]
+        },
+        {
+            "name": "encode",
+            "type": "FeatureProcessor",
+            "inputs": [
+                "normalized_data"
+            ],
+            "outputs": [
+                "encoded_data"
+            ]
+        },
+        {
+            "name": "py_feature_processor",
+            "type": "PyFeatureProcessor",
+            "inputs": [
+                "encoded_data"
+            ],
+            "outputs": [
+                "processed_data"
+            ],
+            "params": {
+                "python_home": "/opt/homebrew/Cellar/python@3.12/3.12.6/Frameworks/Python.framework/Versions/3.12",
+                "python_path": "/opt/homebrew/Cellar/python@3.12/3.12.6/Frameworks/Python.framework/Versions/3.12/lib/python3.12/site-packages",
+                "python_script": "/Users/alex/Code/rust_sandbox/actor_poc/scripts/features.py"
+            }
+        },
+        {
+            "name": "remote_model",
+            "type": "MLModel",
+            "inputs": [
+                "processed_data"
+            ],
+            "outputs": [
+                "lr_output"
+            ],
+            "params": {
+                "remote_endpoint": "http://localhost:4000/process"
+            }
+        },
+        {
+            "name": "local_model",
+            "type": "MLModel",
+            "inputs": [
+                "encoded_data"
+            ],
+            "outputs": [
+                "am_output"
+            ]
+        },
+        {
+            "name": "step_join_point",
+            "type": "StepJoinPoint",
+            "inputs": [
+                "lr_output",
+                "am_output"
+            ],
+            "outputs": [
+                "combined_output"
+            ],
+            "params": {
+                "mode": "AND"
+            }
+        },
+        {
+            "name": "batch_pooler",
+            "type": "BatchPooler",
+            "inputs": [
+                "combined_output"
+            ],
+            "outputs": [
+                "batched_output"
+            ],
+            "params": {
+                "mode": "batch_id"
+            }
+        },
+        {
+            "name": "final_pooler",
+            "type": "BatchPooler",
+            "inputs": [
+                "batched_output"
+            ],
+            "outputs": [
+                "final_output"
+            ],
+            "params": {
+                "mode": "window",
+                "window_size": 2
+            }
+        },
+        {
+            "name": "printer",
+            "type": "Printer",
+            "inputs": [
+                "final_output"
+            ],
+            "outputs": [],
+            "params": {}
+        }
+    ]
+}

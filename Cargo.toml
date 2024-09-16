@@ -1,0 +1,21 @@
+[package]
+name = "actor_poc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+actix = "0.13"
+actix-web = "*"
+futures = "*"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tokio = { version = "1", features = ["full"] }
+log = "0.4"
+env_logger = "0.10"
+rand = "0.8"
+pyo3 = { version = "0.16", features = ["auto-initialize"] }
+clap = "*"
+reqwest = { version = "*", features = ["json"] }
+anyhow = "*"
+dashmap = "*"
+petgraph = "0.6"

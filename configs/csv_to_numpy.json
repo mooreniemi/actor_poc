@@ -1,0 +1,41 @@
+{
+    "steps": [
+        {
+            "name": "csv_reader",
+            "type": "CsvReader",
+            "inputs": [],
+            "outputs": [
+                "csv_output"
+            ],
+            "params": {
+                "file_path": "/tmp/sample_data.csv",
+                "batch_mode": false,
+                "batch_size": 4
+            }
+        },
+        {
+            "name": "py_feature_processor",
+            "type": "PyFeatureProcessor",
+            "inputs": [
+                "csv_output"
+            ],
+            "outputs": [
+                "processed_data"
+            ],
+            "params": {
+                "python_home": "/opt/homebrew/Cellar/python@3.12/3.12.6/Frameworks/Python.framework/Versions/3.12",
+                "python_path": "/opt/homebrew/Cellar/python@3.12/3.12.6/Frameworks/Python.framework/Versions/3.12/lib/python3.12/site-packages",
+                "python_script": "/Users/alex/Code/rust_sandbox/actor_poc/scripts/numpy_example.py"
+            }
+        },
+        {
+            "name": "printer",
+            "type": "Printer",
+            "inputs": [
+                "processed_data"
+            ],
+            "outputs": [],
+            "params": {}
+        }
+    ]
+}

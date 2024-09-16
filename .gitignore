@@ -1,0 +1,49 @@
+# Rust-specific files
+/target/
+**/*.rs.bk
+**/*.rs.orig
+/target/doc/
+/target/debug/
+**/*.exe
+**/*.dll
+**/*.so
+**/*.dylib
+target/*.clippy/
+Cargo.lock
+
+# IDE and editor specific files
+.vscode/
+/.idea/
+/*.sublime-workspace
+
+# Temporary files
+*.tmp
+*.swp
+*.bak
+*.old
+*.orig
+
+# MacOS specific files
+.DS_Store
+
+# Node-specific (if you have frontend or tooling in your project)
+node_modules/
+
+# Ignore backup files
+*~
+
+# Python-specific files
+__pycache__/
+*.py[cod]
+*.egg
+*.egg-info/
+dist/
+build/
+*.pyo
+
+# Python virtual environment
+venv/
+env/
+ENV/
+.venv/
+myenv/
