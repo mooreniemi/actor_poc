@@ -1,3 +1,4 @@
+use log::debug;
 use petgraph::dot::{Config as GraphConfig, Dot};
 use petgraph::graph::DiGraph;
 use serde_json::Value;
@@ -89,13 +90,15 @@ pub fn export_graph_to_image(
 
     // Save the DOT representation to a temporary file
     // FIXME: should probably remove this or change name
-    let dot_file_path = format!("/tmp/{}.dot", output_path);
+    let dot_file_path = format!("{}.dot", output_path);
+    debug!("Temp file in: {}", dot_file_path);
     let mut dot_file = File::create(&dot_file_path)?;
     use std::io::Write;
     writeln!(dot_file, "{:?}", dot_graph)?;
 
     // Convert the DOT file to a PNG image using the `dot` command from Graphviz
     let output_image_path = format!("{}.png", output_path);
+    debug!("Output image file in: {}", output_image_path);
     let dot_process = Command::new("dot")
         .arg("-Tpng")
         .arg(&dot_file_path)

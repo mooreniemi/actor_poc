@@ -1,11 +1,11 @@
 # Actor-Based Directed Acyclic Graph (DAG) System in Rust
 
-Can also execute Python via `py_feature_processor.rs`. See the `config.json` and example in `scripts/`.
+Can also execute Python via `py_feature_processor.rs`. See the `./configs/csv_to_numpy.json` and example in `scripts/`.
 
 ### cli mode
 
 ```
-cargo run --release -- --config ./config.json --timeout 60
+cargo run --release -- --config ./configs/test_all.json --timeout 60
 ```
 
 ### http mode
@@ -13,7 +13,7 @@ cargo run --release -- --config ./config.json --timeout 60
 Http mode necessarily must work a bit differently. It must force a "cycle" of some kind to return the output to the client. It does so by sharing a `sender_map` state via the `Coordinator`. When `http_mode` is true, the `Coordinator` special cases some of the validation logic. The http handler actually directly sends to the `Coordinator`, which sends to downstream steps. The downstream steps were altered from the input `config.json` if necessary. (`DataGenerator`s are removed, `BatchPooler`s in the final position are restricted to single outputs.)
 
 ```
-cargo run --release -- --config ./config.json --http --timeout 60
+cargo run --release -- --config ./configs/test_all.json --http --timeout 60
 ```
 
 If run in http mode, can send requests:
@@ -25,6 +25,12 @@ curl -X POST http://localhost:8080/process \
         "features": [1.0, 2.5, 3.0, 4.7, 44.0, 22.3]
       }'
 ```
+
+### graphviz
+
+If you have `graphviz` on your local machine you can use the `--graph` mode in the CLI. If you give no file name to that flag it will use whatever you send in as `--config` in `/tmp/` with a `.png` extension. (The `config` is what you parse into a graph).
+
+Check out `resources/test_all.png` for an example output.
 
 ## python
 

@@ -109,7 +109,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let graph = create_graph(step_nodes);
             export_graph_to_image(graph, &graph_output_path)?;
 
-            info!("Graph image saved to {}", graph_output_path);
+            info!("Graph image saved to {}.png", graph_output_path);
             return Ok(());
         }
     }
