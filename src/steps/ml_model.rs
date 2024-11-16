@@ -3,9 +3,12 @@ use crate::messages::ProcessMessage;
 use crate::step::{Step, TraceStep};
 use actix::prelude::*;
 use log::{debug, error, info};
+use ort::{Environment, GraphOptimizationLevel,  SessionBuilder, Value as OrtValue};
+use ndarray::{Array, CowArray};
 use reqwest::Client;
-use serde_json::{json, Value};
+use serde_json::{json, Value as JsonValue};
 use std::time::Instant;
+use std::sync::Arc;
 
 /// MLModel Actor
 ///
@@ -14,19 +17,83 @@ use std::time::Instant;
 pub struct MLModel {
     pub name: String,
     pub output_name: String,
+    pub params: JsonValue,
     pub coordinator: Addr<Coordinator>,
-    pub remote_endpoint: Option<String>, // Optional remote processing endpoint
-    pub params: Value,
+    pub remote_endpoint: Option<String>,
+    pub onnx_model_path: Option<String>,
 }
 
 impl MLModel {
-    /// Handle local prediction
-    // FIXME: should really use ONNX but that doesn't support aarch (easily at least)
-    fn handle_local_prediction(&self, msg: ProcessMessage) -> f64 {
-        match self.output_name.as_str() {
-            "lr_output" => msg.data.iter().sum::<f64>(),
-            "am_output" => msg.data.iter().product::<f64>(),
-            _ => msg.data.iter().sum::<f64>(),
+    fn handle_local_prediction(&self, msg: ProcessMessage) -> Vec<f64> {
+        if let Some(model_path) = &self.onnx_model_path {
+            // Create environment wrapped in Arc
+            let environment = match Environment::builder()
+                .with_name("MLModelEnvironment")
+                .build()
+            {
+                Ok(env) => Arc::new(env),
+                Err(e) => {
+                    error!("Failed to build environment: {:?}", e);
+                    return vec![];
+                }
+            };
+
+            let session = match SessionBuilder::new(&environment)
+                .expect("Failed to create session builder")
+                .with_optimization_level(GraphOptimizationLevel::Level1)
+                .expect("Failed to set optimization level")
+                .with_model_from_file(model_path)
+            {
+                Ok(s) => s,
+                Err(e) => {
+                    error!("Failed to create session: {:?}", e);
+                    return vec![];
+                }
+            };
+
+            // Create input tensor
+            let array = Array::from_shape_vec(
+                (1, msg.data.len()),
+                msg.data.iter().map(|&x| x as f32).collect(),
+            ).expect("Failed to create input array");
+
+            let cow_array: CowArray<f32, _> = array.into_dyn().into();
+
+            let input_tensor = OrtValue::from_array(session.allocator(), &cow_array)
+                .expect("Failed to create input tensor");
+
+            // Run inference and process results
+            let outputs = match session.run(vec![input_tensor]) {
+                Ok(o) => o,
+                Err(e) => {
+                    error!("ONNX inference failed: {:?}", e);
+                    return vec![];
+                }
+            };
+
+            // Process outputs
+            match outputs.get(0) {
+                Some(output) => {
+                    match output.try_extract::<f32>() {
+                        Ok(tensor) => tensor.view().iter().map(|&x| x as f64).collect(),
+                        Err(e) => {
+                            error!("Failed to extract tensor data: {:?}", e);
+                            vec![]
+                        }
+                    }
+                }
+                None => {
+                    error!("ONNX model produced no output tensor");
+                    vec![]
+                }
+            }
+        } else {
+            // Fallback logic
+            match self.output_name.as_str() {
+                "lr_output" => vec![msg.data.iter().sum()],
+                "am_output" => vec![msg.data.iter().product()],
+                _ => vec![msg.data.iter().sum()],
+            }
         }
     }
 }
@@ -36,12 +103,17 @@ impl Step for MLModel {
         name: String,
         output_name: String,
         coordinator: Addr<Coordinator>,
-        params: Value,
+        params: JsonValue,
     ) -> Self {
         let remote_endpoint = params
             .get("remote_endpoint")
             .and_then(|ep| ep.as_str())
             .map(|ep| ep.to_string());
+
+        let onnx_model_path = params
+            .get("onnx_model_path")
+            .and_then(|path| path.as_str())
+            .map(|path| path.to_string());
 
         MLModel {
             name,
@@ -49,6 +121,7 @@ impl Step for MLModel {
             coordinator,
             remote_endpoint,
             params,
+            onnx_model_path,
         }
     }
 
@@ -64,7 +137,7 @@ impl Step for MLModel {
         self.coordinator.clone()
     }
 
-    fn params(&self) -> &Value {
+    fn params(&self) -> &JsonValue {
         &self.params
     }
 }
@@ -86,14 +159,14 @@ impl Handler<ProcessMessage> for MLModel {
         // Infer processing mode based on the presence of `remote_endpoint`
         if let Some(remote_endpoint) = &self.remote_endpoint {
             // Remote processing
-            let coordinator = self.coordinator.clone(); // Move the coordinator for async task
-            let remote_endpoint = remote_endpoint.clone(); // Clone endpoint into task
+            let coordinator = self.coordinator.clone();
+            let remote_endpoint = remote_endpoint.clone();
             let output_name = self.output_name.clone();
             let params = self.params.clone();
 
             ctx.spawn(
                 async move {
-                    let client = Client::new(); // Create the client only inside the task
+                    let client = Client::new();
                     let input_data = json!({ "features": msg.data });
                     debug!("Sending payload: {:?}", input_data);
                     let response = client.post(&remote_endpoint).json(&input_data).send().await;
@@ -108,25 +181,21 @@ impl Handler<ProcessMessage> for MLModel {
                                         .map(|array| {
                                             array
                                                 .iter()
-                                                .filter_map(|v| v.as_f64())  // Extracting valid f64 values
-                                                .collect::<Vec<f64>>()
+                                                .filter_map(|v| v.as_f64())
+                                                .collect()
                                         })
                                         .unwrap_or_else(|| {
-                                            error!("Invalid or missing 'processed_features' field in response");
+                                            error!("Invalid 'processed_features' in response");
                                             vec![]
                                         })
                                 }
                                 Err(_) => {
-                                    error!("Failed to parse JSON response from remote processing");
+                                    error!("Failed to parse JSON response from remote");
                                     vec![]
                                 }
                             };
-                            info!(
-                                "MLModel '{}' successfully processed remotely: {:?}",
-                                msg.node_id, result
-                            );
+                            info!("MLModel '{}' processed remotely: {:?}", msg.node_id, result);
 
-                            // Update trace with the local processing time and params
                             let duration = start_time.elapsed();
                             let trace_step = TraceStep::new(&output_name, duration, params);
                             msg.trace.add_step(trace_step);
@@ -141,17 +210,10 @@ impl Handler<ProcessMessage> for MLModel {
                             });
                         }
                         Ok(response) => {
-                            error!(
-                                "MLModel '{}' received error from remote endpoint: {:?}",
-                                msg.node_id,
-                                response.status()
-                            );
+                            error!("Remote endpoint error: {:?}", response.status());
                         }
                         Err(e) => {
-                            error!(
-                                "MLModel '{}' failed to send request: {:?}",
-                                msg.node_id, e
-                            );
+                            error!("Request to remote endpoint failed: {:?}", e);
                         }
                     }
                 }
@@ -162,20 +224,18 @@ impl Handler<ProcessMessage> for MLModel {
             let prediction = self.handle_local_prediction(msg.clone());
 
             info!(
-                "MLModel '{}' prediction: {} (processed locally)",
+                "MLModel '{}' prediction: {:?} (processed locally)",
                 self.output_name, prediction
             );
 
-            // Update trace with the local processing time and params
             let duration = start_time.elapsed();
             let trace_step = TraceStep::new(&self.output_name, duration, self.params.clone());
             msg.trace.add_step(trace_step);
 
-            // Send result to Coordinator
             self.coordinator.do_send(ProcessMessage {
                 id: msg.id,
                 node_id: self.output_name.clone(),
-                data: vec![prediction],
+                data: prediction,
                 batch_id: msg.batch_id,
                 batch_total: msg.batch_total,
                 trace: msg.trace.clone(),

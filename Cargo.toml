@@ -19,3 +19,5 @@ reqwest = { version = "*", features = ["json"] }
 anyhow = "*"
 dashmap = "*"
 petgraph = "0.6"
+ort = "1.16"
+ndarray = "0.15"
